@@ -1,4 +1,6 @@
+#include <stdio.h>
 #include <asf.h>
+#include <string.h>
 
 #include "gfx_mono_ug_2832hsweg04.h"
 #include "gfx_mono_text.h"
@@ -29,19 +31,30 @@ volatile char SW1 = 0;
 volatile char SW2 = 0;
 volatile char SW3 = 0;
 
+// globais
+const char end_str[] = " Hz  ";
+const int variacao_por_clique = 1;
+const int frequencia_maxima = 50;
+const int frequencia_minima = 1;
+int meio_periodo_ms;
+int frequencia = 5;
+
 
 void callback_sw1() {
 	if (pio_get(OLED_SW1_PIO, PIO_INPUT, OLED_SW1_IDX_MASK)) {
 		SW1 = 0;
 	} else {
 		SW1 = 1;
+		if (frequencia >= frequencia_minima + variacao_por_clique) {
+			frequencia -= variacao_por_clique;
+		}
 	}
 }
 
 void callback_sw2() {
 	if (pio_get(OLED_SW2_PIO, PIO_INPUT, OLED_SW2_IDX_MASK)) {
 		SW2 = 0;
-		} else {
+	} else {
 		SW2 = 1;
 	}
 }
@@ -49,8 +62,21 @@ void callback_sw2() {
 void callback_sw3() {
 	if (pio_get(OLED_SW3_PIO, PIO_INPUT, OLED_SW3_IDX_MASK)) {
 		SW3 = 0;
-		} else {
+	} else {
 		SW3 = 1;
+		if (frequencia <= frequencia_maxima - variacao_por_clique) {
+			frequencia += variacao_por_clique;
+		}
+	}
+}
+
+// pisca led N vez no periodo T
+void pisca_led(int n, int t){
+	for (int i=0;i<n;i++){
+		pio_clear(LED_PIO, LED_IDX_MASK);
+		delay_ms(t);
+		pio_set(LED_PIO, LED_IDX_MASK);
+		delay_ms(t);
 	}
 }
 
@@ -110,12 +136,16 @@ int main (void) {
   
 	while(1) {
 		
+		char frequencia_str[5];
+		meio_periodo_ms = 1000 / (2 * frequencia);
+		sprintf(frequencia_str, "%d", frequencia);
+		strcat(frequencia_str, end_str);
+		gfx_mono_draw_string(frequencia_str, 50,16, &sysfont);
 		
-		if (SW1 || SW2 || SW3) {
-			pio_clear(PIOC, LED_IDX_MASK);
-			gfx_mono_draw_string("%c%c%c", 50,16, &sysfont);
-		} else {
-			pio_set(PIOC, LED_IDX_MASK);
-		}
+		pio_set(PIOC, LED_IDX_MASK);
+		delay_ms(meio_periodo_ms);
+		pio_clear(PIOC, LED_IDX_MASK);
+		delay_ms(meio_periodo_ms);
+		
 	}
 }
