@@ -131,9 +131,7 @@ void init(void)
 	
 	// define os pinos dos switches como input e os torna pull up
 	_pio_set_input(OLED_SW1_PIO, OLED_SW1_PIO_IDX_MASK, _PIO_PULLUP | _PIO_DEBOUNCE);
-	_pio_set_input(OLED_SW2_PIO, OLED_SW2_PIO_IDX_MASK, _PIO_PULLUP | _PIO_DEBOUNCE);
-	_pio_set_input(OLED_SW3_PIO, OLED_SW3_PIO_IDX_MASK, _PIO_PULLUP | _PIO_DEBOUNCE);
-	
+	_pio_set_input(PIOD, OLED_SW2_PIO_IDX_MASK | OLED_SW3_PIO_IDX_MASK, _PIO_PULLUP | _PIO_DEBOUNCE);	
 }
 
 /************************************************************************/
