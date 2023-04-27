@@ -20,6 +20,24 @@
 #define LED_PIN			8
 #define LED_PIN_MASK	(1 << LED_PIN)
 
+// Bot�o de voltar a m�sica (SW1 da OLED1XPLAINED)
+#define BACK_BUT_PIO				PIOA						// periferico que controla o SW 1 no modulo OLED
+#define BACK_BUT_PIO_ID				ID_PIOA						// ID do periferico PIOD
+#define BACK_BUT_IDX				0							// ID do pino conectado ao SW 1 do modulo OLED
+#define BACK_BUT_IDX_MASK			(1 << BACK_BUT_IDX)			// mascara para controlarmos o SW 1 do modulo OLED
+
+// Bot�o de pause-play (SW2 da OLED1XPLAINED)
+#define PLAY_BUT_PIO				PIOC						// periferico que controla o SW 2 no modulo OLED
+#define PLAY_BUT_PIO_ID				ID_PIOC						// ID do periferico PIOC
+#define PLAY_BUT_IDX				30							// ID do pino conectado ao SW 2 do modulo OLED
+#define PLAY_BUT_IDX_MASK			(1 << PLAY_BUT_IDX)			// mascara para controlarmos o SW 2 do modulo OLED
+
+// Bot�o de avan�ar a m�sica (SW3 da OLED1XPLAINED)
+#define PASS_BUT_PIO				PIOB						// periferico que controla o SW 3 no modulo OLED
+#define PASS_BUT_PIO_ID				ID_PIOB						// ID do periferico PIOA
+#define PASS_BUT_IDX				2							// ID do pino conectado ao SW 3 do modulo OLED
+#define PASS_BUT_IDX_MASK			(1 << PASS_BUT_IDX)			// mascara para controlarmos o SW 3 do modulo OLED
+
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
@@ -45,6 +63,16 @@ static void BUT_init(void);
 
 /** SEMAFOROS E FILAS **/
 SemaphoreHandle_t semaforo_queda;
+QueueHandle_t queue_yaw;
+
+enum orientacao {
+	ESQUERDA,
+	FRENTE,
+	DIREITA
+};
+
+char FIRST = 1;
+double initial_yaw;
 
 
 /************************************************************************/
@@ -244,12 +272,53 @@ static void task_imu(void *pvParameters) {
 
 		// dados em pitch roll e yaw
 		const FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
-
-		printf("Roll %0.1f, Pitch %0.1f, Yaw %0.1f\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
 		
+		if (FIRST) {
+			initial_yaw = euler.angle.yaw;
+			FIRST = 0;
+		}
+
+		//printf("Roll %0.1f, Pitch %0.1f, Yaw %0.1f\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
+		
+		float media = euler.angle.yaw - initial_yaw;
+		
+		xQueueSend(queue_yaw, (void *)&media, 0);
 
 		// uma amostra a cada 1ms
 		vTaskDelay(1);
+	}
+}
+
+static void task_orientacao(void *pvParameters) {
+	
+	// variável para recever dados da fila
+	float proc_data;
+	
+	while(1) {
+		if (xQueueReceive(queue_yaw, &(proc_data), 1000)) {
+			printf("task_adc: %f \n", proc_data);
+			
+			if (proc_data < 15 && proc_data > -15) {
+				pio_set(BACK_BUT_PIO, BACK_BUT_IDX_MASK);
+				pio_set(PASS_BUT_PIO, PASS_BUT_IDX_MASK);
+				pio_clear(PLAY_BUT_PIO, PLAY_BUT_IDX_MASK);
+			}
+			
+			if (proc_data >= 15) {
+				pio_clear(BACK_BUT_PIO, BACK_BUT_IDX_MASK);
+				pio_set(PASS_BUT_PIO, PASS_BUT_IDX_MASK);
+				pio_set(PLAY_BUT_PIO, PLAY_BUT_IDX_MASK);
+			}
+			
+			if (proc_data <= -15) {
+				pio_set(BACK_BUT_PIO, BACK_BUT_IDX_MASK);
+				pio_clear(PASS_BUT_PIO, PASS_BUT_IDX_MASK);
+				pio_set(PLAY_BUT_PIO, PLAY_BUT_IDX_MASK);
+			}
+			
+		} else {
+			printf("Nao chegou um novo dado em 1 segundo\n");
+		}
 	}
 }
 
@@ -346,6 +415,16 @@ int main(void) {
 
 	/* Initialize the console uart */
 	configure_console();
+	
+	// Inicializa clock dos PIOs
+	pmc_enable_periph_clk(ID_PIOA);
+	pmc_enable_periph_clk(ID_PIOB);
+	pmc_enable_periph_clk(ID_PIOC);
+
+	// Configura os PIOs para lidar com os pinos dos botoes como entradas com pull-up e debounce
+	pio_configure(PASS_BUT_PIO, PIO_OUTPUT_1, PASS_BUT_IDX_MASK, PIO_DEFAULT);
+	pio_configure(PLAY_BUT_PIO, PIO_OUTPUT_1, PLAY_BUT_IDX_MASK, PIO_DEFAULT);
+	pio_configure(BACK_BUT_PIO, PIO_OUTPUT_1, BACK_BUT_IDX_MASK, PIO_DEFAULT);
 
 	/* Create task to control oled */
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
@@ -360,9 +439,18 @@ int main(void) {
 		printf("Failed to create imu task\r\n");
 	}
 	
+	if (xTaskCreate(task_orientacao, "orientacao", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create orientacao task\r\n");
+	}
+	
 	semaforo_queda = xSemaphoreCreateBinary();
 	if (semaforo_queda == NULL) {
 		printf("Failed to create queda semaphore");
+	}
+	
+	queue_yaw = xQueueCreate(100, sizeof(float));
+	if (queue_yaw == NULL) {
+		printf("falha em criar a queue queue_yaw \n");
 	}
 
 	/* Start the scheduler. */
