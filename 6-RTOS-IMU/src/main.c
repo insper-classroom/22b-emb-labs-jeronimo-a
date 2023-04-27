@@ -124,7 +124,7 @@ static void task_imu(void *pvParameters) {
 	
 	/* Inicializa Função de fusão */
 	FusionAhrs ahrs;
-	FusionAhrsInitialise(&ahrs); 
+	FusionAhrsInitialise(&ahrs);
 
 	/* buffer para recebimento de dados */
 	uint8_t bufferRX[10];
@@ -232,6 +232,21 @@ static void task_imu(void *pvParameters) {
 		if (caiu) {
 			xSemaphoreGive(semaforo_queda);
 		}
+		
+		const FusionVector gyroscope = {proc_gyr_x, proc_gyr_y, proc_gyr_z};
+		const FusionVector accelerometer = {proc_acc_x, proc_acc_y, proc_acc_z};
+			
+		// Tempo entre amostras
+		float dT = 0.1;
+
+		// aplica o algoritmo
+		FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, dT);
+
+		// dados em pitch roll e yaw
+		const FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
+
+		printf("Roll %0.1f, Pitch %0.1f, Yaw %0.1f\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
+		
 
 		// uma amostra a cada 1ms
 		vTaskDelay(1);
