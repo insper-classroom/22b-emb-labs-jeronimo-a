@@ -4,6 +4,8 @@
 
 src\ASF\sam\drivers\spi\spi.c
 
+src\ASF\sam\drivers\tc\tc.c
+
 src\oled\gfx_mono_framebuffer.c
 
 src\oled\gfx_mono_generic.c

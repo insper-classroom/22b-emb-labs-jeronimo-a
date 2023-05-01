@@ -38,6 +38,9 @@ extern void xPortSysTickHandler(void);
 
 /** prototypes */
 void io_init(void);
+void TC_init(Tc*, int, int, int);
+void pin_toggle(Pio*, uint32_t);
+
 
 /************************************************************************/
 /* RTOS application funcs                                               */
@@ -59,6 +62,17 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 /* handlers / callbacks                                                 */
 /************************************************************************/
+
+void TC1_Handler(void) {
+	/**
+	* Devemos indicar ao TC que a interrupção foi satisfeita.
+	* Isso é realizado pela leitura do status do periférico
+	**/
+	volatile uint32_t status = tc_get_status(TC0, 1);
+
+	/** Muda o estado do LED (pisca) **/
+	pin_toggle(LED1_PIO, LED1_IDX_MASK);  
+}
 
 /************************************************************************/
 /* TASKS                                                                */
@@ -85,8 +99,6 @@ static void task_oled(void *pvParameters) {
 
 
 static void task_printConsole(void *pvParameters) {
-
-	char state = 0;
 	
 	uint32_t cont=0;
 	for (;;)
@@ -95,17 +107,8 @@ static void task_printConsole(void *pvParameters) {
 		
 		printf("%03d\n",cont);
 
-		if (state) {
-			pio_set(LED1_PIO, LED1_IDX_MASK);
-			pio_set(LED2_PIO, LED2_IDX_MASK);
-			pio_set(LED3_PIO, LED3_IDX_MASK);
-			state = 0;
-		} else {
-			pio_clear(LED1_PIO, LED1_IDX_MASK);
-			pio_clear(LED2_PIO, LED2_IDX_MASK);
-			pio_clear(LED3_PIO, LED3_IDX_MASK);
-			state = 1;
-		}
+		pin_toggle(LED2_PIO, LED2_IDX_MASK);
+		pin_toggle(LED3_PIO, LED3_IDX_MASK);
 
 		vTaskDelay(1000);
 	}
@@ -127,6 +130,37 @@ void io_init() {
 	pio_configure(LED2_PIO, PIO_OUTPUT_1, LED2_IDX_MASK, PIO_DEFAULT);
 	pio_configure(LED3_PIO, PIO_OUTPUT_1, LED3_IDX_MASK, PIO_DEFAULT);
 
+}
+
+void TC_init(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
+	uint32_t ul_div;
+	uint32_t ul_tcclks;
+	uint32_t ul_sysclk = sysclk_get_cpu_hz();
+
+	/* Configura o PMC */
+	pmc_enable_periph_clk(ID_TC);
+
+	/** Configura o TC para operar em  freq hz e interrupçcão no RC compare */
+	tc_find_mck_divisor(freq, ul_sysclk, &ul_div, &ul_tcclks, ul_sysclk);
+	
+	/** ATIVA PMC PCK6 TIMER_CLOCK1  */
+	if(ul_tcclks == 0 )
+	    pmc_enable_pck(PMC_PCK_6);
+	
+	tc_init(TC, TC_CHANNEL, ul_tcclks | TC_CMR_CPCTRG);
+	tc_write_rc(TC, TC_CHANNEL, (ul_sysclk / ul_div) / freq);
+
+	/* Configura NVIC*/
+  	NVIC_SetPriority(ID_TC, 4);
+	NVIC_EnableIRQ((IRQn_Type) ID_TC);
+	tc_enable_interrupt(TC, TC_CHANNEL, TC_IER_CPCS);
+}
+
+void pin_toggle(Pio *pio, uint32_t mask) {
+  if(pio_get_output_data_status(pio, mask))
+    pio_clear(pio, mask);
+  else
+    pio_set(pio,mask);
 }
 
 static void configure_console(void) {
@@ -160,6 +194,10 @@ int main(void) {
 
 	// Inicializa o IO
 	io_init();
+
+	// Inicializa o TC
+	TC_init(TC0, ID_TC1, 1, 2);
+	tc_start(TC0, 1);
 
 	/* Create task to control oled */
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
