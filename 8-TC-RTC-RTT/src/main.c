@@ -1,3 +1,4 @@
+
 #include <asf.h>
 #include "conf_board.h"
 
@@ -27,14 +28,20 @@
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
 
-#define TASK_PRINTCONSOLE_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
-#define TASK_PRINTCONSOLE_STACK_PRIORITY            (tskIDLE_PRIORITY)
+#define TASK_PRINTCONSOLE_STACK_SIZE      	(1024*6/sizeof(portSTACK_TYPE))
+#define TASK_PRINTCONSOLE_STACK_PRIORITY	(tskIDLE_PRIORITY)
+
+#define TASK_LED_STACK_SIZE               	(1024*6/sizeof(portSTACK_TYPE))
+#define TASK_LED_STACK_PRIORITY            	(tskIDLE_PRIORITY)
 
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask,  signed char *pcTaskName);
 extern void vApplicationIdleHook(void);
 extern void vApplicationTickHook(void);
 extern void vApplicationMallocFailedHook(void);
 extern void xPortSysTickHandler(void);
+
+/* Semaforos */
+SemaphoreHandle_t semaphore_led1;
 
 /** prototypes */
 void io_init(void);
@@ -64,14 +71,10 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 void TC1_Handler(void) {
-	/**
-	* Devemos indicar ao TC que a interrupção foi satisfeita.
-	* Isso é realizado pela leitura do status do periférico
-	**/
-	volatile uint32_t status = tc_get_status(TC0, 1);
 
-	/** Muda o estado do LED (pisca) **/
-	pin_toggle(LED1_PIO, LED1_IDX_MASK);  
+	volatile uint32_t status = tc_get_status(TC0, 1);
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(semaphore_led1, &xHigherPriorityTaskWoken);
 }
 
 /************************************************************************/
@@ -79,30 +82,20 @@ void TC1_Handler(void) {
 /************************************************************************/
 
 static void task_oled(void *pvParameters) {
-  gfx_mono_ssd1306_init();
-  gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
-  gfx_mono_draw_string("oii", 0, 20, &sysfont);
+	gfx_mono_ssd1306_init();
+	gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
+	gfx_mono_draw_string("oii", 0, 20, &sysfont);
 
 	uint32_t cont=0;
-	for (;;)
-	{
-		char buf[3];
-		
-		cont++;
-		
-		sprintf(buf,"%03d",cont);
-		gfx_mono_draw_string(buf, 0, 20, &sysfont);
-				
-		vTaskDelay(1000);
-	}
+	while (1) {}
 }
 
 
 static void task_printConsole(void *pvParameters) {
 	
 	uint32_t cont=0;
-	for (;;)
-	{		
+	while (1) {
+
 		cont++;
 		
 		printf("%03d\n",cont);
@@ -112,6 +105,18 @@ static void task_printConsole(void *pvParameters) {
 
 		vTaskDelay(1000);
 	}
+}
+
+static void task_led(void *pvParameters) {
+
+	while (1) {
+
+		if (xSemaphoreTake(semaphore_led1, 0)) {
+			pin_toggle(LED1_PIO, LED1_IDX_MASK);
+		}
+
+	}
+
 }
 
 /************************************************************************/
@@ -206,6 +211,16 @@ int main(void) {
 	
 	if (xTaskCreate(task_printConsole, "task_printConsole", TASK_PRINTCONSOLE_STACK_SIZE, NULL, TASK_PRINTCONSOLE_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create printConsole task\r\n");
+	}
+
+	if (xTaskCreate(task_led, "task_led", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create led task\r\n");
+	}
+
+	/* Cria os semaforos e queues */
+	semaphore_led1 = xSemaphoreCreateBinary();
+	if (semaphore_led1 == NULL) {
+		printf("Failed to create led1 semaphore");
 	}
 
 	printf("inicio\n");
