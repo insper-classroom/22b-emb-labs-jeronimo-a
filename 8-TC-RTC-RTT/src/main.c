@@ -42,11 +42,16 @@ extern void xPortSysTickHandler(void);
 
 /* Semaforos */
 SemaphoreHandle_t semaphore_led1;
+SemaphoreHandle_t semaphore_led2;
 
 /** prototypes */
 void io_init(void);
 void TC_init(Tc*, int, int, int);
 void pin_toggle(Pio*, uint32_t);
+static void RTT_init(float, uint32_t, uint32_t);
+
+
+
 
 
 /************************************************************************/
@@ -66,6 +71,10 @@ extern void vApplicationMallocFailedHook(void) {
 	configASSERT( ( volatile void * ) NULL );
 }
 
+
+
+
+
 /************************************************************************/
 /* handlers / callbacks                                                 */
 /************************************************************************/
@@ -76,6 +85,22 @@ void TC1_Handler(void) {
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	xSemaphoreGiveFromISR(semaphore_led1, &xHigherPriorityTaskWoken);
 }
+
+void RTT_Handler(void) {
+
+	uint32_t ul_status;
+	ul_status = rtt_get_status(RTT);
+
+	/* IRQ due to Alarm */
+	if ((ul_status & RTT_SR_ALMS) == RTT_SR_ALMS) {
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		xSemaphoreGiveFromISR(semaphore_led2, &xHigherPriorityTaskWoken);
+	}
+}
+
+
+
+
 
 /************************************************************************/
 /* TASKS                                                                */
@@ -90,24 +115,9 @@ static void task_oled(void *pvParameters) {
 	while (1) {}
 }
 
-
-static void task_printConsole(void *pvParameters) {
-	
-	uint32_t cont=0;
-	while (1) {
-
-		cont++;
-		
-		printf("%03d\n",cont);
-
-		pin_toggle(LED2_PIO, LED2_IDX_MASK);
-		pin_toggle(LED3_PIO, LED3_IDX_MASK);
-
-		vTaskDelay(1000);
-	}
-}
-
 static void task_led(void *pvParameters) {
+
+	RTT_init(4, 16, RTT_MR_ALMIEN);
 
 	while (1) {
 
@@ -115,9 +125,18 @@ static void task_led(void *pvParameters) {
 			pin_toggle(LED1_PIO, LED1_IDX_MASK);
 		}
 
+		if (xSemaphoreTake(semaphore_led2, 0)) {
+			pin_toggle(LED2_PIO, LED2_IDX_MASK);
+	  		RTT_init(4, 16, RTT_MR_ALMIEN);
+		}
+
 	}
 
 }
+
+
+
+
 
 /************************************************************************/
 /* funcoes                                                              */
@@ -161,6 +180,34 @@ void TC_init(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
 	tc_enable_interrupt(TC, TC_CHANNEL, TC_IER_CPCS);
 }
 
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource) {
+
+  uint16_t pllPreScale = (int) (((float) 32768) / freqPrescale);
+	
+  rtt_sel_source(RTT, false);
+  rtt_init(RTT, pllPreScale);
+  
+  if (rttIRQSource & RTT_MR_ALMIEN) {
+	uint32_t ul_previous_time;
+  	ul_previous_time = rtt_read_timer_value(RTT);
+  	while (ul_previous_time == rtt_read_timer_value(RTT));
+  	rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
+  }
+
+  /* config NVIC */
+  NVIC_DisableIRQ(RTT_IRQn);
+  NVIC_ClearPendingIRQ(RTT_IRQn);
+  NVIC_SetPriority(RTT_IRQn, 4);
+  NVIC_EnableIRQ(RTT_IRQn);
+
+  /* Enable RTT interrupt */
+  if (rttIRQSource & (RTT_MR_RTTINCIEN | RTT_MR_ALMIEN))
+	rtt_enable_interrupt(RTT, rttIRQSource);
+  else
+	rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
+		  
+}
+
 void pin_toggle(Pio *pio, uint32_t mask) {
   if(pio_get_output_data_status(pio, mask))
     pio_clear(pio, mask);
@@ -183,10 +230,13 @@ static void configure_console(void) {
 	setbuf(stdout, NULL);
 }
 
+
+
+
+
 /************************************************************************/
 /* main                                                                 */
 /************************************************************************/
-
 
 int main(void) {
 
@@ -208,10 +258,6 @@ int main(void) {
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create oled task\r\n");
 	}
-	
-	if (xTaskCreate(task_printConsole, "task_printConsole", TASK_PRINTCONSOLE_STACK_SIZE, NULL, TASK_PRINTCONSOLE_STACK_PRIORITY, NULL) != pdPASS) {
-		printf("Failed to create printConsole task\r\n");
-	}
 
 	if (xTaskCreate(task_led, "task_led", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create led task\r\n");
@@ -221,6 +267,11 @@ int main(void) {
 	semaphore_led1 = xSemaphoreCreateBinary();
 	if (semaphore_led1 == NULL) {
 		printf("Failed to create led1 semaphore");
+	}
+
+	semaphore_led2 = xSemaphoreCreateBinary();
+	if (semaphore_led2 == NULL) {
+		printf("Failed to create led2 semaphore");
 	}
 
 	printf("inicio\n");
