@@ -176,10 +176,6 @@ static void task_led(void *pvParameters) {
 			pin_toggle(LED2_PIO, LED2_IDX_MASK);
 	  		RTT_init(4, 16, RTT_MR_ALMIEN);
 		}
-
-		if (xSemaphoreTake(semaphore_led3, 0)) {
-			pin_toggle(LED3_PIO, LED3_IDX_MASK);
-		}
 	}
 }
 
@@ -196,7 +192,22 @@ static void task_but(void *pvParameters) {
 			
 			/* configura alarme do RTC para daqui 20 segundos */                                                                   
 			rtc_set_date_alarm(RTC, 1, current_month, 1, current_day);                              
-			rtc_set_time_alarm(RTC, 1, current_hour, 1, current_min, 1, current_sec + 5);
+			rtc_set_time_alarm(RTC, 1, current_hour, 1, current_min, 1, current_sec + 20);
+		}
+	}
+}
+
+static void task_led3(void *pvParameters) {
+
+	while (1) {
+
+		if (xSemaphoreTake(semaphore_led3, 0)) {
+			for (int i = 0; i < 10; i++){
+				pio_clear(LED3_PIO, LED3_IDX_MASK);
+				vTaskDelay(25);
+				pio_set(LED3_PIO, LED3_IDX_MASK);
+				vTaskDelay(25);
+			}
 		}
 	}
 }
@@ -365,6 +376,10 @@ int main(void) {
 
 	if (xTaskCreate(task_but, "task_but", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create but task\r\n");
+	}
+
+	if (xTaskCreate(task_led3, "task_led3", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create led3 task\r\n");
 	}
 
 	/* Cria os semaforos e queues */
