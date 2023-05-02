@@ -24,12 +24,15 @@
 #define LED3_IDX		2
 #define LED3_IDX_MASK	(1 << LED3_IDX)
 
+// Botao do LED 3
+#define BUT_PIO				PIOA
+#define BUT_PIO_ID			ID_PIOA
+#define BUT_IDX				19
+#define BUT_IDX_MASK		(1 << BUT_IDX)
+
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
-
-#define TASK_PRINTCONSOLE_STACK_SIZE      	(1024*6/sizeof(portSTACK_TYPE))
-#define TASK_PRINTCONSOLE_STACK_PRIORITY	(tskIDLE_PRIORITY)
 
 #define TASK_LED_STACK_SIZE               	(1024*6/sizeof(portSTACK_TYPE))
 #define TASK_LED_STACK_PRIORITY            	(tskIDLE_PRIORITY)
@@ -43,12 +46,26 @@ extern void xPortSysTickHandler(void);
 /* Semaforos */
 SemaphoreHandle_t semaphore_led1;
 SemaphoreHandle_t semaphore_led2;
+SemaphoreHandle_t semaphore_led3;
+SemaphoreHandle_t semaphore_but;
 
-/** prototypes */
+/* Tipos */
+typedef struct {
+	uint32_t year;
+	uint32_t month;
+	uint32_t day;
+	uint32_t week;
+	uint32_t hour;
+	uint32_t minute;
+	uint32_t second;
+} calendar;
+
+/* prototypes */
 void io_init(void);
 void TC_init(Tc*, int, int, int);
 void pin_toggle(Pio*, uint32_t);
 static void RTT_init(float, uint32_t, uint32_t);
+void RTC_init(Rtc *rtc, uint32_t id_rtc, calendar t, uint32_t irq_type);
 
 
 
@@ -98,6 +115,36 @@ void RTT_Handler(void) {
 	}
 }
 
+void RTC_Handler(void) {
+    uint32_t ul_status = rtc_get_status(RTC);
+
+	printf("handled\n");
+	
+    /* seccond tick */
+    if ((ul_status & RTC_SR_SEC) == RTC_SR_SEC) {	
+	// o código para irq de segundo vem aqui
+    }
+	
+    /* Time or date alarm */
+    if ((ul_status & RTC_SR_ALARM) == RTC_SR_ALARM) {
+    	// o código para irq de alame vem aqui
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		xSemaphoreGiveFromISR(semaphore_led3, &xHigherPriorityTaskWoken);
+    }
+
+    rtc_clear_status(RTC, RTC_SCCR_SECCLR);
+    rtc_clear_status(RTC, RTC_SCCR_ALRCLR);
+    rtc_clear_status(RTC, RTC_SCCR_ACKCLR);
+    rtc_clear_status(RTC, RTC_SCCR_TIMCLR);
+    rtc_clear_status(RTC, RTC_SCCR_CALCLR);
+    rtc_clear_status(RTC, RTC_SCCR_TDERRCLR);
+}
+
+void BUT_Handler(void) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(semaphore_but, &xHigherPriorityTaskWoken);
+}
+
 
 
 
@@ -130,8 +177,28 @@ static void task_led(void *pvParameters) {
 	  		RTT_init(4, 16, RTT_MR_ALMIEN);
 		}
 
+		if (xSemaphoreTake(semaphore_led3, 0)) {
+			pin_toggle(LED3_PIO, LED3_IDX_MASK);
+		}
 	}
+}
 
+static void task_but(void *pvParameters) {
+
+	while (1) {
+
+		if (xSemaphoreTake(semaphore_but, 0)) {
+			/* Leitura do valor atual do RTC */
+			uint32_t current_hour, current_min, current_sec;
+			uint32_t current_year, current_month, current_day, current_week;
+			rtc_get_time(RTC, &current_hour, &current_min, &current_sec);
+			rtc_get_date(RTC, &current_year, &current_month, &current_day, &current_week);
+			
+			/* configura alarme do RTC para daqui 20 segundos */                                                                   
+			rtc_set_date_alarm(RTC, 1, current_month, 1, current_day);                              
+			rtc_set_time_alarm(RTC, 1, current_hour, 1, current_min, 1, current_sec + 5);
+		}
+	}
 }
 
 
@@ -153,7 +220,15 @@ void io_init() {
 	pio_configure(LED1_PIO, PIO_OUTPUT_1, LED1_IDX_MASK, PIO_DEFAULT);
 	pio_configure(LED2_PIO, PIO_OUTPUT_1, LED2_IDX_MASK, PIO_DEFAULT);
 	pio_configure(LED3_PIO, PIO_OUTPUT_1, LED3_IDX_MASK, PIO_DEFAULT);
+	pio_configure(BUT_PIO, PIO_INPUT, BUT_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE);
 
+	pio_handler_set(PIOA, ID_PIOA, BUT_IDX_MASK, PIO_IT_FALL_EDGE, BUT_Handler);
+	pio_enable_interrupt(PIOA, BUT_IDX_MASK);
+	pio_get_interrupt_status(PIOA);
+	NVIC_EnableIRQ(ID_PIOA);
+	NVIC_SetPriority(ID_PIOA, 4);
+
+	
 }
 
 void TC_init(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
@@ -215,6 +290,27 @@ void pin_toggle(Pio *pio, uint32_t mask) {
     pio_set(pio,mask);
 }
 
+void RTC_init(Rtc *rtc, uint32_t id_rtc, calendar t, uint32_t irq_type) {
+	/* Configura o PMC */
+	pmc_enable_periph_clk(ID_RTC);
+
+	/* Default RTC configuration, 24-hour mode */
+	rtc_set_hour_mode(rtc, 0);
+
+	/* Configura data e hora manualmente */
+	rtc_set_date(rtc, t.year, t.month, t.day, t.week);
+	rtc_set_time(rtc, t.hour, t.minute, t.second);
+
+	/* Configure RTC interrupts */
+	NVIC_DisableIRQ(id_rtc);
+	NVIC_ClearPendingIRQ(id_rtc);
+	NVIC_SetPriority(id_rtc, 4);
+	NVIC_EnableIRQ(id_rtc);
+
+	/* Ativa interrupcao via alarme */
+	rtc_enable_interrupt(rtc,  irq_type);
+}
+
 static void configure_console(void) {
 	const usart_serial_options_t uart_serial_options = {
 		.baudrate = CONF_UART_BAUDRATE,
@@ -254,6 +350,10 @@ int main(void) {
 	TC_init(TC0, ID_TC1, 1, 2);
 	tc_start(TC0, 1);
 
+	/** Configura RTC */                                                                            
+    calendar rtc_initial = {2018, 3, 19, 12, 15, 45 ,1};                                            
+    RTC_init(RTC, ID_RTC, rtc_initial, RTC_IER_ALREN);                                              
+
 	/* Create task to control oled */
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create oled task\r\n");
@@ -261,6 +361,10 @@ int main(void) {
 
 	if (xTaskCreate(task_led, "task_led", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create led task\r\n");
+	}
+
+	if (xTaskCreate(task_but, "task_but", TASK_LED_STACK_SIZE, NULL, TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create but task\r\n");
 	}
 
 	/* Cria os semaforos e queues */
@@ -272,6 +376,16 @@ int main(void) {
 	semaphore_led2 = xSemaphoreCreateBinary();
 	if (semaphore_led2 == NULL) {
 		printf("Failed to create led2 semaphore");
+	}
+
+	semaphore_led3 = xSemaphoreCreateBinary();
+	if (semaphore_led3 == NULL) {
+		printf("Failed to create led3 semaphore");
+	}
+
+	semaphore_but = xSemaphoreCreateBinary();
+	if (semaphore_but == NULL) {
+		printf("Failed to create but semaphore");
 	}
 
 	printf("inicio\n");
