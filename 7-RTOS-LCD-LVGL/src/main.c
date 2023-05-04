@@ -23,6 +23,13 @@ static lv_color_t buf_1[LV_HOR_RES_MAX * LV_VER_RES_MAX];
 static lv_disp_drv_t disp_drv;          /*A variable to hold the drivers. Must be static or global.*/
 static lv_indev_drv_t indev_drv;
 
+/* Botoes */
+lv_obj_t * power_btn;
+lv_obj_t * m_btn;
+lv_obj_t * clock_btn;
+lv_obj_t * up_btn;
+lv_obj_t * down_btn;
+
 /************************************************************************/
 /* RTOS                                                                 */
 /************************************************************************/
@@ -54,7 +61,7 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 
-static void event_handler(lv_event_t * e) {
+static void event_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if(code == LV_EVENT_CLICKED) {
@@ -65,17 +72,143 @@ static void event_handler(lv_event_t * e) {
 	}
 }
 
+static void power_btn_handler(lv_event_t *e) {
+
+}
+
+static void m_btn_handler(lv_event_t *e) {
+
+}
+
+static void clock_btn_handler(lv_event_t *e) {
+
+}
+
+static void up_btn_handler(lv_event_t *e) {
+
+}
+
+static void down_btn_handler(lv_event_t *e) {
+
+}
+
+void power_btn_make() {
+
+	lv_obj_t *labelBtn1;
+
+	static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_bg_color(&style, lv_color_black());
+    lv_style_set_border_color(&style, lv_color_black());
+    lv_style_set_border_width(&style, 5);
+
+	power_btn = lv_btn_create(lv_scr_act());
+	lv_obj_add_event_cb(power_btn, power_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align(power_btn, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+	lv_obj_add_style(power_btn, &style, 0);
+	lv_obj_set_width(power_btn, 30);
+	lv_obj_set_height(power_btn, 30);
+
+	labelBtn1 = lv_label_create(power_btn);
+	lv_label_set_text(labelBtn1, "[ " LV_SYMBOL_POWER);
+	lv_obj_center(labelBtn1);
+}
+
+void m_btn_make() {
+
+	lv_obj_t *labelBtn1;
+
+	static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_bg_color(&style, lv_color_black());
+    lv_style_set_border_color(&style, lv_color_black());
+    lv_style_set_border_width(&style, 5);
+
+	m_btn = lv_btn_create(lv_scr_act());
+	lv_obj_add_event_cb(m_btn, m_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align_to(m_btn, power_btn, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
+	lv_obj_add_style(m_btn, &style, 0);
+	lv_obj_set_width(m_btn, 30);
+	lv_obj_set_height(m_btn, 30);
+
+	labelBtn1 = lv_label_create(m_btn);
+	lv_label_set_text(labelBtn1, "| M |");
+	lv_obj_center(labelBtn1);
+}
+
+void clock_btn_make() {
+
+	lv_obj_t *labelBtn1;
+
+	static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_bg_color(&style, lv_color_black());
+    lv_style_set_border_color(&style, lv_color_black());
+    lv_style_set_border_width(&style, 5);
+
+	clock_btn = lv_btn_create(lv_scr_act());
+	lv_obj_add_event_cb(clock_btn, clock_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align_to(clock_btn, m_btn, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
+	lv_obj_add_style(clock_btn, &style, 0);
+	lv_obj_set_width(clock_btn, 30);
+	lv_obj_set_height(clock_btn, 30);
+
+	labelBtn1 = lv_label_create(clock_btn);
+	lv_label_set_text(labelBtn1, LV_SYMBOL_SETTINGS " ]");
+	lv_obj_center(labelBtn1);
+}
+
+void down_btn_make() {
+
+	lv_obj_t *labelBtn1;
+
+	static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_bg_color(&style, lv_color_black());
+    lv_style_set_border_color(&style, lv_color_black());
+    lv_style_set_border_width(&style, 5);
+
+	down_btn = lv_btn_create(lv_scr_act());
+	lv_obj_add_event_cb(down_btn, up_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align(down_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
+	lv_obj_add_style(down_btn, &style, 0);
+	lv_obj_set_width(down_btn, 30);
+	lv_obj_set_height(down_btn, 30);
+
+	labelBtn1 = lv_label_create(down_btn);
+	lv_label_set_text(labelBtn1, LV_SYMBOL_DOWN " ]");
+	lv_obj_center(labelBtn1);
+}
+
+void up_btn_make() {
+
+	lv_obj_t *labelBtn1;
+
+	static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_bg_color(&style, lv_color_black());
+    lv_style_set_border_color(&style, lv_color_black());
+    lv_style_set_border_width(&style, 5);
+
+	up_btn = lv_btn_create(lv_scr_act());
+	lv_obj_add_event_cb(up_btn, up_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align_to(up_btn, down_btn, LV_ALIGN_OUT_LEFT_TOP, -10, 0);
+	lv_obj_add_style(up_btn, &style, 0);
+	lv_obj_set_width(up_btn, 30);
+	lv_obj_set_height(up_btn, 30);
+
+	labelBtn1 = lv_label_create(up_btn);
+	lv_label_set_text(labelBtn1, "[ " LV_SYMBOL_UP);
+	lv_obj_center(labelBtn1);
+}
+
 void lv_termostato(void) {
 
-	lv_obj_t * labelBtn1;
-
-	lv_obj_t * btn1 = lv_btn_create(lv_scr_act());
-	lv_obj_add_event_cb(btn1, event_handler, LV_EVENT_ALL, NULL);
-	lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -40);
-
-	labelBtn1 = lv_label_create(btn1);
-	lv_label_set_text(labelBtn1, "teste");
-	lv_obj_center(labelBtn1);
+	power_btn_make();
+	m_btn_make();
+	clock_btn_make();
+	down_btn_make();
+	up_btn_make();
 
 }
 
