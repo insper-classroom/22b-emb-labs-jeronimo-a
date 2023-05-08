@@ -19,6 +19,8 @@ LV_FONT_DECLARE(dseg70);
 LV_FONT_DECLARE(dseg50);
 LV_FONT_DECLARE(dseg30);
 
+
+
 /*A static or global variable to store the buffers*/
 static lv_disp_draw_buf_t disp_buf;
 
@@ -107,29 +109,27 @@ static void event_handler(lv_event_t *e) {
 	}
 }
 
-static void power_btn_handler(lv_event_t *e) {
+static void power_btn_handler(lv_event_t *e) {}
+static void m_btn_handler(lv_event_t *e) {}
+static void clock_btn_handler(lv_event_t *e) {}
 
-}
-
-static void m_btn_handler(lv_event_t *e) {
-
-}
-
-static void clock_btn_handler(lv_event_t *e) {
-
-}
 
 static void up_btn_handler(lv_event_t *e) {
-	printf("up but handler\n");
-}
-
-static void down_btn_handler(lv_event_t *e) {
-	printf("DW but handler\n");
 	lv_event_code_t code = lv_event_get_code(e);
     char *c;
     int temp;
     if (code == LV_EVENT_CLICKED) {
-		printf("sks\n");
+        c = lv_label_get_text(label_set_value);
+        temp = atoi(c);
+        lv_label_set_text_fmt(label_set_value, "%02d", temp + 1);
+    }
+}
+
+static void down_btn_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+    char *c;
+    int temp;
+    if (code == LV_EVENT_CLICKED) {
         c = lv_label_get_text(label_set_value);
         temp = atoi(c);
         lv_label_set_text_fmt(label_set_value, "%02d", temp - 1);
@@ -213,7 +213,7 @@ void down_btn_make() {
     lv_style_set_border_width(&style, 5);
 
 	down_btn = lv_btn_create(lv_scr_act());
-	lv_obj_add_event_cb(down_btn, up_btn_handler, LV_EVENT_ALL, NULL);
+	lv_obj_add_event_cb(down_btn, down_btn_handler, LV_EVENT_ALL, NULL);
 	lv_obj_align(down_btn, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
 	lv_obj_add_style(down_btn, &style, 0);
 	lv_obj_set_width(down_btn, 45);
@@ -236,7 +236,7 @@ void up_btn_make() {
 
 	up_btn = lv_btn_create(lv_scr_act());
 	lv_obj_add_event_cb(up_btn, up_btn_handler, LV_EVENT_ALL, NULL);
-	lv_obj_align_to(up_btn, down_btn, LV_ALIGN_OUT_LEFT_TOP, -10, 0);
+	lv_obj_align_to(up_btn, down_btn, LV_ALIGN_OUT_LEFT_TOP, -20, 0);
 	lv_obj_add_style(up_btn, &style, 0);
 	lv_obj_set_width(up_btn, 45);
 	lv_obj_set_height(up_btn, 45);
